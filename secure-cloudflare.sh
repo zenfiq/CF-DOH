@@ -34,6 +34,8 @@ NETPLAN_FILE=$(ls /etc/netplan/*.yaml | head -n 1)
 cp \$NETPLAN_FILE \${NETPLAN_FILE}.bak
 sed -i '/nameservers:/,/addresses:/c\      nameservers:\n        addresses:\n          - 127.0.0.1\n          - 1.1.1.1\n          - 8.8.8.8' \$NETPLAN_FILE
 netplan apply
+rm -f /etc/resolv.conf
+echo -e "nameserver 127.0.0.1\nnameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf
 
 echo "=== Setup Firewall UFW ==="
 ufw allow 22/tcp
@@ -43,18 +45,22 @@ ufw allow from 127.0.0.1 to any port 53 proto udp
 ufw allow from 127.0.0.1 to any port 53 proto tcp
 ufw deny out to any port 53 proto udp
 ufw deny out to any port 53 proto tcp
+ufw default deny incoming
+ufw default allow outgoing
 ufw --force enable
 
 echo "=== Apply iptables Anti-DDoS Rules ==="
 iptables -F
 iptables -X
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -p tcp --syn -m limit --limit 2/second --limit-burst 25 -j ACCEPT
 iptables -A INPUT -p tcp --tcp-flags ALL SYN,ACK,FIN,RST RST -m limit --limit 2/second --limit-burst 2 -j ACCEPT
 iptables -A INPUT -p icmp -m limit --limit 1/second --limit-burst 5 -j ACCEPT
 iptables -A INPUT -p udp -m length --length 0:28 -j DROP
 iptables -A INPUT -p udp -m limit --limit 50/second --limit-burst 50 -j ACCEPT
-iptables -A INPUT -j DROP
 
 netfilter-persistent save
 netfilter-persistent reload
@@ -86,9 +92,9 @@ sysctl -p
 
 echo "=== Setup Cloudflared Health Monitor ==="
 cat > /etc/cron.d/monitor-cloudflared <<EOF
-* * * * * root pgrep cloudflared > /dev/null || (systemctl restart cloudflared || echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf)
+* * * * * root pgrep cloudflared > /dev/null || (systemctl restart cloudflared || (echo -e "nameserver 1.1.1.1\nnameserver 8.8.8.8" > /etc/resolv.conf))
 EOF
 
 echo "=== FINISH ==="
-echo "✅ Server sudah full secure: Cloudflare DoH + Anti-DDoS + BBR2 + Firewall Locked!"
-echo "✅ Direkomendasikan reboot server untuk optimalisasi penuh!"
+echo "✅ Server sudah full ultra-secure: Cloudflare DoH + Firewall Locked + Anti-DDoS + BBR2 Speed!"
+echo "✅ Direkomendasikan reboot server untuk mengaktifkan semua optimasi penuh!"
